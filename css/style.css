@@ -220,6 +220,7 @@ textarea{resize:vertical}
 }
 .modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .modal-head h2{font-size:17px}
+.ver{font-size:11px;color:var(--txt-3);font-weight:500;vertical-align:middle;margin-left:4px}
 .modal-sep{height:1px;background:var(--line);margin:16px 0}
 .switch{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--txt-2);cursor:pointer;margin-bottom:4px}
 .switch input{width:17px;height:17px;accent-color:var(--acc);margin:0}
