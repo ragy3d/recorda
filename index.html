@@ -152,6 +152,8 @@
       <input id="sKeepAudio" type="checkbox">
       <span>Guardar el audio de cada grabación</span>
     </label>
+    <p class="micro">⚠️ En varios celulares el grabador se queda con el micrófono
+      y el dictado deja de escuchar. Si te dice «no se escuchó nada», dejalo apagado.</p>
 
     <div class="modal-sep"></div>
 
@@ -172,6 +174,8 @@
     <div class="modal-sep"></div>
 
     <button id="testNotifBtn" class="btn btn-ghost full">Probar notificación</button>
+    <button id="diagBtn" class="btn btn-ghost full">Diagnóstico del micrófono</button>
+    <pre id="diagOut" class="diag hidden"></pre>
     <button id="wipeBtn" class="btn btn-danger full">Borrar todos los datos</button>
   </div>
 </div>

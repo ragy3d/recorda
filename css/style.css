@@ -225,6 +225,12 @@ textarea{resize:vertical}
 .switch input{width:17px;height:17px;accent-color:var(--acc);margin:0}
 .note{font-size:12.5px;color:var(--txt-2);line-height:1.6;background:var(--card-2);padding:12px;border-radius:12px}
 .note strong{color:var(--txt)}
+.diag{
+  background:var(--card-2);border:1px solid var(--line);border-radius:11px;
+  padding:11px;margin:10px 0 0;font-size:11.5px;line-height:1.55;
+  color:var(--txt-2);white-space:pre-wrap;word-break:break-word;
+  max-height:210px;overflow:auto;font-family:ui-monospace,Consolas,monospace;
+}
 .note-list{margin:8px 0 0;padding-left:18px}
 .note-list li{margin-bottom:7px}
 .note .link-btn{font-size:12.5px;padding:0}

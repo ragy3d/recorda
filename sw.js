@@ -1,6 +1,6 @@
 /* Service worker mínimo: sirve para mostrar notificaciones
    (obligatorio en Chrome Android) y para que la app abra sin conexión. */
-const CACHE = "recorda-v2";
+const CACHE = "recorda-v3";
 const ASSETS = [
   "./", "./index.html", "./css/style.css",
   "./js/app.js", "./js/parser.js", "./js/db.js", "./manifest.json",

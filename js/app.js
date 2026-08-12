@@ -15,7 +15,7 @@ const DEFAULT_CFG = {
   advance:   [7, 3, 1, 0],
   hour:      "09:00",
   lang:      "es-AR",
-  keepAudio: true
+  keepAudio: false   // apagado: compite con el dictado por el micrófono
 };
 
 let items = load(LS_ITEMS, []);
@@ -79,6 +79,17 @@ function toast(msg, isErr){
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recog = null, recorder = null, stream = null;
 let recording = false, finalText = "", chunks = [];
+let lastError = null, gotAnyResult = false;
+
+const ERRORES = {
+  "no-speech":           "No se escuchó tu voz. Acercate al micrófono y hablá fuerte.",
+  "audio-capture":       "No se pudo usar el micrófono. ¿Lo está usando otra app?",
+  "not-allowed":         "El navegador bloqueó el micrófono. Habilitalo en los permisos del sitio.",
+  "service-not-allowed": "El navegador bloqueó el dictado. Habilitá el micrófono en los permisos del sitio.",
+  "network":             "El dictado necesita internet y no se pudo conectar.",
+  "aborted":             "Se interrumpió el dictado.",
+  "language-not-supported": "Ese idioma no está disponible. Probá cambiarlo en Ajustes."
+};
 
 function setRecUI(on){
   $("recBtn").classList.toggle("rec", on);
@@ -89,8 +100,12 @@ function setRecUI(on){
 }
 
 async function startRecording(){
+  if(!window.isSecureContext){
+    toast("Abrí la app por https para poder usar el micrófono.", true);
+    return;
+  }
   if(!SR){
-    toast("Tu navegador no reconoce voz. Usá Chrome o Edge, o escribilo a mano.", true);
+    toast("Tu navegador no reconoce voz. Escribilo a mano.", true);
     openPreview(Parser.parse(""));
     return;
   }
@@ -98,25 +113,46 @@ async function startRecording(){
   finalText = "";
   chunks = [];
   pendingAudio = null;
+  lastError = null;
+  gotAnyResult = false;
   $("transcript").textContent = "";
   $("transcriptBox").classList.remove("hidden");
   $("preview").classList.add("hidden");
 
-  // audio opcional, en paralelo al dictado
-  if(cfg.keepAudio && navigator.mediaDevices && window.MediaRecorder){
+  /* Pedimos el micrófono ANTES de arrancar el dictado. Así el cartel de
+     permiso se resuelve primero (si no, el dictado arranca mientras el
+     usuario todavía no aceptó y se pierde el principio de la frase). */
+  let permisoOk = true;
+  if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
     try{
-      stream = await navigator.mediaDevices.getUserMedia({ audio:true });
-      recorder = new MediaRecorder(stream);
-      recorder.ondataavailable = e => { if(e.data.size) chunks.push(e.data); };
-      recorder.onstop = () => {
-        if(chunks.length) pendingAudio = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
-        if(stream) stream.getTracks().forEach(t => t.stop());
-        stream = null;
-      };
-      recorder.start();
-    }catch{
-      recorder = null;   // sin permiso de micrófono para grabar: seguimos sólo con el dictado
+      const s = await navigator.mediaDevices.getUserMedia({ audio:true });
+      if(cfg.keepAudio && window.MediaRecorder){
+        /* Guardar el audio y dictar al mismo tiempo pelean por el micrófono:
+           en muchos celulares el grabador se lo queda en exclusiva y el
+           dictado no escucha nada. Por eso viene apagado por defecto. */
+        stream = s;
+        recorder = new MediaRecorder(s);
+        recorder.ondataavailable = e => { if(e.data.size) chunks.push(e.data); };
+        recorder.onstop = () => {
+          if(chunks.length) pendingAudio = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+          if(stream) stream.getTracks().forEach(t => t.stop());
+          stream = null;
+        };
+        recorder.start();
+      }else{
+        s.getTracks().forEach(t => t.stop());   // liberamos el micrófono para el dictado
+      }
+    }catch(err){
+      permisoOk = false;
+      lastError = err && err.name ? err.name : "getUserMedia";
     }
+  }
+
+  if(!permisoOk){
+    setRecUI(false);
+    $("transcriptBox").classList.add("hidden");
+    toast("No hay permiso para el micrófono. Tocá el 🔒 de la barra y habilitalo.", true);
+    return;
   }
 
   recog = new SR();
@@ -125,6 +161,8 @@ async function startRecording(){
   recog.interimResults = true;
 
   recog.onresult = e => {
+    gotAnyResult = true;
+    lastError = null;
     let interim = "";
     for(let i = e.resultIndex; i < e.results.length; i++){
       const txt = e.results[i][0].transcript;
@@ -135,9 +173,11 @@ async function startRecording(){
   };
 
   recog.onerror = e => {
-    if(e.error === "no-speech") return;                    // silencio: se reintenta solo
-    if(e.error === "not-allowed" || e.error === "service-not-allowed"){
-      toast("No hay permiso para usar el micrófono.", true);
+    lastError = e.error;
+    if(e.error === "no-speech") return;             // silencio: onend lo reanuda
+    if(e.error === "not-allowed" || e.error === "service-not-allowed" ||
+       e.error === "audio-capture" || e.error === "network"){
+      toast(ERRORES[e.error] || ("Error de dictado: " + e.error), true);
       stopRecording();
     }
   };
@@ -145,7 +185,7 @@ async function startRecording(){
   // Chrome corta tras unos segundos de silencio: lo reanudamos
   recog.onend = () => {
     if(recording){
-      try{ recog.start(); }catch{ /* ya arrancando */ }
+      try{ recog.start(); }catch{ /* ya estaba arrancando */ }
     }
   };
 
@@ -153,26 +193,41 @@ async function startRecording(){
     recog.start();
     recording = true;
     setRecUI(true);
-  }catch{
+  }catch(err){
+    lastError = "start:" + (err && err.name);
     toast("No se pudo iniciar el dictado.", true);
+    setRecUI(false);
   }
 }
 
 function stopRecording(){
+  if(!recording && !recog) return;
   recording = false;
   setRecUI(false);
   if(recog){ try{ recog.stop(); }catch{} recog = null; }
   if(recorder && recorder.state !== "inactive"){ try{ recorder.stop(); }catch{} }
 
+  // damos margen a que llegue el último resultado y cierre el grabador
   setTimeout(() => {
     const text = ($("transcript").textContent || finalText).trim();
-    if(!text){
-      toast("No se escuchó nada. Probá de nuevo.", true);
-      $("transcriptBox").classList.add("hidden");
+
+    if(text){
+      openPreview(Parser.parse(text));
       return;
     }
-    openPreview(Parser.parse(text));
-  }, 350);   // margen para el último resultado / cierre del recorder
+
+    // sin texto: explicamos el motivo y abrimos igual el formulario
+    const motivo = lastError && ERRORES[lastError]
+      ? ERRORES[lastError]
+      : gotAnyResult
+        ? "No se entendió lo que dijiste."
+        : "No se escuchó nada.";
+
+    toast(motivo + " Cargalo a mano y probamos de nuevo.", true);
+    $("transcriptBox").classList.add("hidden");
+    openPreview(Parser.parse(""));
+    $("fSubject").focus();
+  }, 800);
 }
 
 /* ===================== PREVIEW ===================== */
@@ -607,6 +662,63 @@ $("settingsModal").onclick = e => {
 $("testNotifBtn").onclick = async () => {
   if(Notification.permission !== "granted") await askPermission();
   if(Notification.permission === "granted") notify("📚 Prueba", "Así te voy a avisar cuando se acerque la fecha.");
+};
+
+/* Junta todo lo que hace falta para entender por qué no anda el dictado.
+   El resultado se copia al portapapeles para poder pasarlo por mensaje. */
+$("diagBtn").onclick = async () => {
+  const out = $("diagOut");
+  out.classList.remove("hidden");
+  out.textContent = "Probando…";
+
+  const L = [];
+  const add = (k, v) => L.push(k + ": " + v);
+
+  add("navegador", navigator.userAgent);
+  add("https", window.isSecureContext ? "sí" : "NO (el micrófono no va a andar)");
+  add("instalada", matchMedia("(display-mode: standalone)").matches ? "sí" : "no, abierta en el navegador");
+  add("reconoce voz", SR ? "sí" : "NO");
+  add("idioma", cfg.lang);
+  add("guardar audio", cfg.keepAudio ? "SÍ (puede tapar el dictado)" : "no");
+  add("notificaciones", ("Notification" in window) ? Notification.permission : "no soportadas");
+  add("último error", lastError || "ninguno");
+
+  try{
+    const p = await navigator.permissions.query({ name:"microphone" });
+    add("permiso micrófono", p.state);
+  }catch{ add("permiso micrófono", "no se pudo consultar"); }
+
+  try{
+    const s = await navigator.mediaDevices.getUserMedia({ audio:true });
+    const t = s.getAudioTracks()[0];
+    add("micrófono", "OK — " + (t ? t.label || "sin nombre" : "sin pista"));
+
+    // medimos el nivel de entrada 1,5 s para ver si realmente entra sonido
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const an = ctx.createAnalyser();
+    ctx.createMediaStreamSource(s).connect(an);
+    const buf = new Uint8Array(an.fftSize);
+    let pico = 0;
+    out.textContent = L.join("\n") + "\n\n🔴 Hablá ahora, 2 segundos…";
+    await new Promise(res => {
+      const t0 = Date.now();
+      (function loop(){
+        an.getByteTimeDomainData(buf);
+        for(const v of buf) pico = Math.max(pico, Math.abs(v - 128));
+        if(Date.now() - t0 < 2000) requestAnimationFrame(loop); else res();
+      })();
+    });
+    ctx.close();
+    s.getTracks().forEach(x => x.stop());
+    add("nivel de entrada", pico + "/128 " + (pico > 6 ? "→ entra sonido ✓" : "→ NO entra sonido ✗"));
+  }catch(err){
+    add("micrófono", "FALLA — " + (err && err.name));
+  }
+
+  const txt = L.join("\n");
+  out.textContent = txt;
+  try{ await navigator.clipboard.writeText(txt); toast("Diagnóstico copiado"); }
+  catch{ toast("Sacale una captura a esto"); }
 };
 
 $("wipeBtn").onclick = () => {
