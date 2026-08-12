@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Recordá — avisos de exámenes por voz</title>
+<meta name="theme-color" content="#0e1016">
+<meta name="description" content="Grabá un audio con la fecha del examen y los temas, y te aviso cuando se acerque.">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<!-- iOS: para que se abra como app desde la pantalla de inicio -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Recordá">
+</head>
+<body>
+
+<div id="permBanner" class="banner hidden">
+  <span>Activá las notificaciones para que te avise cerca de la fecha.</span>
+  <button id="permBtn" class="btn btn-sm">Activar</button>
+  <button id="permDismiss" class="icon-btn" aria-label="Cerrar">✕</button>
+</div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-dot"></span>
+    <h1>Recordá</h1>
+  </div>
+  <div class="topbar-actions">
+    <button id="installBtn" class="btn btn-sm hidden">Instalar</button>
+    <button id="icsBtn" class="icon-btn" title="Exportar todo al calendario (.ics)">📅</button>
+    <button id="settingsBtn" class="icon-btn" title="Ajustes">⚙️</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============ GRABADOR ============ -->
+  <section class="recorder">
+    <button id="recBtn" class="mic" aria-label="Grabar">
+      <span class="mic-ring"></span>
+      <svg class="mic-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="9" y="2" width="6" height="11" rx="3"></rect>
+        <path d="M5 10.5a7 7 0 0 0 14 0"></path>
+        <line x1="12" y1="17.5" x2="12" y2="21"></line>
+        <line x1="8.5" y1="21" x2="15.5" y2="21"></line>
+      </svg>
+    </button>
+    <p id="recHint" class="hint">Tocá el micrófono y dictá tu examen</p>
+
+    <div id="transcriptBox" class="transcript hidden">
+      <p id="transcript"></p>
+    </div>
+
+    <details class="examples">
+      <summary>¿Qué puedo decir?</summary>
+      <ul>
+        <li>«Examen de Historia el 15 de marzo, temas revolución francesa, Napoleón y el imperio. Avisame 5 días antes.»</li>
+        <li>«Parcial de Análisis Matemático el 3/11 a las 14, entra límites, derivadas e integrales.»</li>
+        <li>«Prueba de Biología el próximo martes, temas célula y mitosis.»</li>
+        <li>«Final de Química en 3 semanas, tema tabla periódica.»</li>
+      </ul>
+    </details>
+
+    <button id="manualBtn" class="link-btn">o escribilo a mano</button>
+  </section>
+
+  <!-- ============ PREVIEW / EDICIÓN ============ -->
+  <section id="preview" class="card preview hidden">
+    <h2 class="preview-title">Revisá los datos</h2>
+    <div class="field">
+      <label for="fSubject">Materia / examen</label>
+      <input id="fSubject" type="text" placeholder="Ej: Historia">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="fDate">Fecha</label>
+        <input id="fDate" type="date">
+      </div>
+      <div class="field">
+        <label for="fTime">Hora <span class="opt">(opcional)</span></label>
+        <input id="fTime" type="time">
+      </div>
+    </div>
+    <div class="field">
+      <label for="fTopics">Temas <span class="opt">(separados por coma)</span></label>
+      <textarea id="fTopics" rows="2" placeholder="Ej: revolución francesa, Napoleón"></textarea>
+    </div>
+    <div class="field">
+      <label for="fAdvance">Avisarme con <span class="opt">días de anticipación</span></label>
+      <input id="fAdvance" type="text" placeholder="7, 3, 1, 0">
+      <p class="micro">Separá con comas. <code>0</code> = el mismo día.</p>
+    </div>
+    <div id="audioPreview" class="audio-preview hidden">
+      <audio id="audioEl" controls></audio>
+    </div>
+    <div class="preview-actions">
+      <button id="cancelBtn" class="btn btn-ghost">Cancelar</button>
+      <button id="saveBtn" class="btn btn-primary">Guardar</button>
+    </div>
+  </section>
+
+  <!-- ============ LISTA ============ -->
+  <section class="list-section">
+    <div class="list-head">
+      <h2>Próximos</h2>
+      <span id="count" class="pill">0</span>
+    </div>
+    <div id="list" class="list"></div>
+    <div id="empty" class="empty">
+      <div class="empty-ico">🗓️</div>
+      <p>Todavía no cargaste ningún examen.<br>Grabá uno para empezar.</p>
+    </div>
+
+    <details id="pastWrap" class="past hidden">
+      <summary>Pasados (<span id="pastCount">0</span>)</summary>
+      <div id="pastList" class="list"></div>
+    </details>
+  </section>
+
+</main>
+
+<!-- ============ AJUSTES ============ -->
+<div id="settingsModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2>Ajustes</h2>
+      <button id="settingsClose" class="icon-btn" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div class="field">
+      <label for="sAdvance">Avisos por defecto <span class="opt">días antes</span></label>
+      <input id="sAdvance" type="text" placeholder="7, 3, 1, 0">
+    </div>
+    <div class="field">
+      <label for="sHour">Hora del aviso</label>
+      <input id="sHour" type="time">
+    </div>
+    <div class="field">
+      <label for="sLang">Idioma del dictado</label>
+      <select id="sLang">
+        <option value="es-AR">Español (Argentina)</option>
+        <option value="es-ES">Español (España)</option>
+        <option value="es-MX">Español (México)</option>
+        <option value="es-419">Español (Latinoamérica)</option>
+      </select>
+    </div>
+    <label class="switch">
+      <input id="sKeepAudio" type="checkbox">
+      <span>Guardar el audio de cada grabación</span>
+    </label>
+
+    <div class="modal-sep"></div>
+
+    <div class="note">
+      <strong>Para que te avise seguro:</strong> el navegador sólo notifica con la app
+      abierta (aunque sea en una pestaña de fondo). Pasá tus exámenes al calendario y
+      te avisa el celular con todo cerrado:
+      <ul class="note-list">
+        <li>El botón <strong>📅</strong> de cada examen lo abre en Google Calendar de
+          un toque. Queda con el <em>aviso por defecto</em> de tu calendario; los días
+          que pediste van escritos en la descripción.</li>
+        <li><button id="icsBtn2" class="link-btn">Exportar todo (.ics)</button> baja un
+          archivo con <strong>los días exactos</strong> ya cargados como alarmas. Lo
+          importás una vez y listo.</li>
+      </ul>
+    </div>
+
+    <div class="modal-sep"></div>
+
+    <button id="testNotifBtn" class="btn btn-ghost full">Probar notificación</button>
+    <button id="wipeBtn" class="btn btn-danger full">Borrar todos los datos</button>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/db.js"></script>
+<script src="js/parser.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
