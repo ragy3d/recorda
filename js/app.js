@@ -32,6 +32,15 @@ function load(key, fallback){
 const saveItems = () => localStorage.setItem(LS_ITEMS, JSON.stringify(items));
 const saveCfg   = () => localStorage.setItem(LS_CFG,   JSON.stringify(cfg));
 
+/* Los que ya usaron la app tienen keepAudio:true guardado, y ese era
+   justamente el motivo de que el dictado no escuchara nada. Lo apagamos
+   una sola vez; después pueden volver a prenderlo si quieren. */
+if(!cfg.migrado2){
+  cfg.keepAudio = false;
+  cfg.migrado2  = true;
+  saveCfg();
+}
+
 /* ===================== FECHAS ===================== */
 const pad = n => String(n).padStart(2, "0");
 const toKey = d => d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate());
